@@ -1,0 +1,150 @@
+= Go Routines and Concurrency
+:author: Tim Kuhlman
+:backend: slidy
+
+== "Do not communicate by sharing memory; instead, share memory by communicating."
+- There is an entire section on the idea in Effective Go
+- It is talked about in a blog post from 2010, early days in Golang. https://blog.golang.org/share-memory-by-communicating
+- Is often repeated philosophy and the first in the list of Go proverbs from https://go-proverbs.github.io/
+- go routines and channels were designed in part to enable programming this way.
+
+== Tranditional threading
+- Shared data structure, multiple threads and locks.
+- Threads try to grab locks so they can get at the data structure.
+- I stole then updated the example from the blog post about a polling a set of urls on a regular basis, doing this with traditional threading:
+
+.The data structures
+----
+type Resource struct {
+  url        string
+  polling    bool
+  lastPolled int64
+}
+
+type Resources struct {
+  data []*Resource
+  lock *sync.Mutex
+}
+----
+
+.The poller function that runs in multiple threads:
+-----
+func Poller(res *Resources) {
+    for {
+        // get the least recently-polled Resource
+        // and mark it as being polled
+        res.lock.Lock()
+        var r *Resource
+        for _, v := range res.data {
+            if v.polling {
+                continue
+            }
+            if r == nil || v.lastPolled < r.lastPolled {
+                r = v
+            }
+        }
+        var skip bool
+        if r != nil && ((time.Nanoseconds() - r.lastPolled) > pollInterval){
+            r.polling = true
+        } else {
+          skip = true
+        }
+        res.lock.Unlock()
+        if skip {
+            continue
+        }
+
+        // poll the URL
+
+        // update the Resource's polling and lastPolled
+        res.lock.Lock()
+        r.polling = false
+        r.lastPolled = time.Nanoseconds()
+        res.lock.Unlock()
+    }
+}
+----
+
+.The main function
+----
+func main() {
+    resources := Resources{} // load from somewhere
+
+    // Launch some Poller goroutines.
+    for i := 0; i < numPollers; i++ {
+      go Poller(resources)
+    }
+
+    //wait for exit
+}
+----
+
+== Using Go routines and channels
+- No locking, a reference to the data structure needed for communication is passed over a channel to another go routine.
+- The communication itself becomes the way of handling synchronization rather than locking. Rather than locking you are passing around ownership
+  of the data.
+- The design becomes closer to two processes communicating over a unix pipe than traditional threading.
+- The poller example reworked with channels communicating in order to share memory
+
+.The Channel based Poller
+----
+func Poller(in <-chan string, out chan<- string) {
+    for r := range in {
+        // poll the URL
+
+        // send the processed Resource to out
+        out <- r
+    }
+}
+----
+
+.The data structures and main
+----
+const (
+    numPollers = 10
+    pollInterval = 10 * time.Second
+)
+
+func main() {
+    resources := []string{} // load from somewhere
+
+    // Create our input and output channels.
+    pending, complete := make(chan string, len(resources), make(chan string)
+
+    // Launch some Poller goroutines.
+    for i := 0; i < numPollers; i++ {
+      go Poller(pending, complete)
+    }
+
+    // feed the pending queue
+    go func() {
+      for _, url := range resources {
+        pending <- url
+      }
+    }()
+
+    // Repeat after pollInterval
+    for r := range complete {
+      go func() {
+        time.Sleep(pollInterval)
+        pending <- url
+      }()
+    }
+}
+----
+
+== Advantages to using channels
+- The primary advantages relate to reducing the cognitive load on the developer, getting threading right is hard. For most cases using channels
+  makes it a lot easier to think about the code.
+- The data structure that is passed can be smaller and more focused and multiple channels used, often making it easier to break up the steps.
+
+== Use Mutexes when they are clearer
+- For some simple uses using mutexes is actually clearer and easier to follow.
+- When speed is a high priority. A mutex is faster than a channel but you likely don't need to worry about this until you are measuring things in
+  nanoseconds. In general clarity of the code is the key factor.
+
+== Good channel examples and helpers
+- https://golang.org/doc/codewalk/sharemem/
+- https://golang.org/doc/effective_go.html#sharing
+- https://dave.cheney.net/2014/03/19/channel-axioms
+- Use the race detector - https://golang.org/doc/articles/race_detector.html
