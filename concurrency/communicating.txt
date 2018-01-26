@@ -133,18 +133,28 @@ func main() {
 }
 ----
 
-== Advantages to using channels
-- The primary advantages relate to reducing the cognitive load on the developer, getting threading right is hard. For most cases using channels
+== When to Use Channels/Mutex
+
+=== Channel
+- The primary advantages relate to reducing the cognitive load on the developer, getting threading right is hard. For many cases using channels
   makes it a lot easier to think about the code.
 - The data structure that is passed can be smaller and more focused and multiple channels used, often making it easier to break up the steps.
 
-== Use Mutexes when they are clearer
-- For some simple uses using mutexes is actually clearer and easier to follow.
+=== Mutexes
+- For some uses using mutexes is clearer and easier to follow. This is especially true of simple cases like incrementing a counter.
 - When speed is a high priority. A mutex is faster than a channel but you likely don't need to worry about this until you are measuring things in
-  nanoseconds. In general clarity of the code is the key factor.
+  nanoseconds.
+
+=== Conclusions
+- Looking around in the standard library there are examples of both mutex and channels being used, sometimes together.
+- In general clarity of the code is the key factor. Use the solution that makes the concurrency easiest to think about and therefore implement correctly.
 
 == Good channel examples and helpers
-- https://golang.org/doc/codewalk/sharemem/
 - https://golang.org/doc/effective_go.html#sharing
+- https://blog.golang.org/share-memory-by-communicating
+- https://golang.org/doc/codewalk/sharemem/
 - https://dave.cheney.net/2014/03/19/channel-axioms
 - Use the race detector - https://golang.org/doc/articles/race_detector.html
+- https://blog.golang.org/pipelines
+- https://blog.golang.org/go-concurrency-patterns-timing-out-and
+- Standard Library examples using channels and mutex, https://golang.org/src/os/signal/signal.go
