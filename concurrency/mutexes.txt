@@ -1,0 +1,105 @@
+= Golang Mutexes
+:author: Tim Kuhlman
+:backend: slidy
+
+== Recap of "Go Routines and Concurrency" talk
+* "Do not communicate by sharing memory; instead, share memory by communicating." is a common Go proverb refering to how to use Go routines and Channels.
+* Go is ultimately pragmatic, clarity of the code is the key factor.
+  When deciding between Go routines and mutexs use the solution that makes the concurrency easiest to think about and therefore implement correctly.
+* This isn't just my conclusion, https://github.com/golang/go/wiki/MutexOrChannel
+
+== Mutexes
+* They all come from the sync package, https://golang.org/pkg/sync
+* Standard Mutex can be locked or unlocked nothing else, lock before reading or writing from the shared data.
+* RWMutex implements both a read lock and the standard lock which matches the behavior of the standard mutex.
+  The read lock can be held by multiple go routines meaning this is good for situations where there are many more reads then writes.
+
+== Mutex Example - Policy locking in Content API
+
+The interface:
+----
+type Manager interface {
+	Allowed(consumer string, assetSiteID string) bool
+}
+----
+
+* The Allowed method is called by many go routines which are reads on the policy data to evalutates the permissions.
+* The policy data is updated in the background at irregular intervals.
+
+=== Go routines and channels implementation
+* There would be these routines:
+** Main, this routine owns the data, it runs a select responding two channels, the update channel or the request channel.
+** Update, this routine waits for a data update then sends it to the main channel over the update channel.
+** Request routines, every routine that calls Allowed results in a request for the current policy sent over request channel.
+   The request includes a return channel that the main routine uses to return the data so Allowed can evaluate the policy.
+
+=== Mutex Implementation
+The production implemenation written by Tom Barber.
+----
+func (pm *policyManager) Allowed(consumer string, assetSiteID string) bool {
+  pm.RLock()
+  policy, ok := pm.policies[strings.ToLower(consumer)]
+  pm.RUnlock()
+
+  // Evaluate the policy
+}
+
+// In another go routine
+func (pm *policyManager) waitForChanges() {
+
+  for {
+    // handle stop signals
+    policies := loadPolicies() // simplified
+    pm.Lock()
+    pm.policies = policies
+    pm.Unlock()
+  }
+}
+----
+
+== RWMutex or Regular
+* Changing only the mutex type and making the read lock/unlock a standard lock/unlock I compared RWMutex and regular in benchmarks.
+
+The benchmark:
+----
+func BenchmarkPolicyManager(b *testing.B) {
+// p is set as a known policy
+pm := &policyManager{policies: p}
+
+  go func() {
+    pm.Lock()
+    pm.policies = p
+    pm.Unlock()
+    time.Sleep(10 * time.Millisecond)
+  }()
+
+  b.RunParallel(func(pb *testing.PB) {
+    for pb.Next() {
+      pm.Allowed("somesite", "othersite")
+    }
+  })
+}
+----
+
+* Run with `go test -bench . -cpu 4,8,12 ./policy`
+* This is on my 4 core laptop with who knows what else running so not the greatest test environment and it is a very simple operation nevertheless you can see RWMutex wins when it is mostly reads like this application.
+
+.Results in ns/op
+|===
+|Lock Type | Write Sleep Time | 4 CPU | 8 CPU | 12 CPU
+|RWMutex | 1ms | 67.4 | 52.7 | 53.1
+|RWMutex | 10ms | 67.1 | 52.3 | 52.5
+|RWMutex | no writes | 66 | 52.4 | 49.5
+|Mutex | 1ms | 67.7 | 74.6 | 79
+|Mutex | 10ms | 68.4 | 76.4 | 79.4
+|Mutex | no writes | 67.1 | 75.7 | 80.3
+|===
+
+
+== Other sync package goodness
+* *Once* - Allows setting a function to be called on a single time. It is useful for on demand initialization.
+* *Map* - is a concurrency safe map implementation particularly good for large numbers of go routines using a map when the value for a specific key does not change much.
+* *WaitGroup* - A tool for managing a set of worker routines.
+* A couple I have no experience with:
+** *Pool* - a set of temporary objects that may be individually saved and retrieved.
+** *Cond* - a condition variable, a rendezvous point for goroutines waiting for or announcing the occurrence of an event.
