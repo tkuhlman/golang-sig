@@ -1,0 +1,188 @@
+= Object Oriented Programming with Interfaces
+:author: Tim Kuhlman
+:backend: slidy
+
+== What is Object Oriented Programming?
+
+Object Oriented languages support these 3 major concepts:
+
+* Encapsulation - Linking together code and data so that a self contained black box is implemented.
+* Polymorphism - A single interface that can be applied to entities of different types.
+* Inheritance and/or Composition
+  ** Composition is including one object in another, ie the "has-a" relationship.
+  ** Inheritance is one object bringing the data and methods of one object into itself, the "is-a-type-of" of relationship.
+
+In most OO languages objects are used to fulfill these components.
+
+Do you think Go is an Object Oriented language?
+
+== Is Golang an Object Oriented language?
+
+The FAQ https://golang.org/doc/faq#Is_Go_an_object-oriented_language[entry] for this question starts with "Yes and no."
+The no part is primarily because of a lack of a type hierachy, lets examine the 3 major OOP concepts to see why Yes.
+
+* Encapsulation
+  ** Structs with associated methods and exported or not fields clearly fulfills this.
+* Polymorphism
+  ** An interface is Go is exactly this.
+* Inheritance/Composition
+  ** Composition is trivial, adding one struct in the field of another.
+  ** Inheritance is limited, https://golang.org/doc/effective_go.html#embedding[Embedding] provides a partial solution but is not a true inheritance rather is akin to an automatic forwarding of methods and objects to the embedded struct.
+  This difference is clear during initialization and when doing reflection.
+
+
+Structs aren't simply another name for objects they lack automatic intialization, true inheritance and other details usually found in objects.
+Overall structs are too lightweight to feel like objects, they are more like c style structs with the ability to add methods around them (which you can do for any named type).
+
+=== Why this approach?
+
+The designers of Golang argue for interfaces over traditional objects for these reasons:
+
+* Types can easily implement multiple interfaces without the complexity of multiple inheritance.
+  This in fact encourages many small interfaces which can simplify designs.
+* Evolvability is much better, both new interfaces and new implementations of existing interfaces can be added without touching existing code.
+* Simplification of both the language (no keywords and syntax for objects, structs are lighter weight) and the implementation of the language (reduced bookkeeping regarding a type hierachy).
+
+== OOP with Interfaces
+
+How do OO concepts translate into Go when you are making a program?
+
+Structs work well when you want to encapsulate data and methods:
+----
+type MyDBClient struct {
+  user string
+  url string
+}
+
+func (db MyDBClient) read(key string) (string, error) {
+  // read from db
+}
+
+func (db MyDBClient) write(key, data string) error {
+  // write to db
+}
+----
+
+Define an interface when you have different types of something, ie a DB client
+----
+type DBClient interface {
+  read(string) (string, error)
+  write(string, string) error
+}
+----
+
+Note that I didn't need to change any existing code nor will I in any further examples.
+
+A simple App setup
+----
+type app struct {
+  db DBClient
+}
+
+func (a *app) run() error {
+// implementation
+}
+
+func main() {
+  db := MyDBClient{user: "user", url: "url"}
+  a := app{db: db}
+  return a.run()
+}
+----
+
+Add another implementation of your interface and begin using it with one line changed in main, no app changes.
+----
+type otherDB struct {
+  url string
+}
+
+func (db otherDB) read(key string) (string, error) {
+  // read from db
+}
+
+func (db otherDB) write(key, data string) error {
+  // read from db
+}
+
+// change the line in main from
+// db := MyDBClient{user: "user", url: "url"}
+// to
+// db := otherDB{url: "url"}
+----
+
+This above matches functionality that is generally possible in class based languages with a base class.
+
+With interfaces we can also define new interfaces that work with existing code without changes to that existing code.
+----
+type ReadDBClient interface {
+  read(string) (string, error)
+}
+
+type ReadOnlyApp struct {
+  db ReadDBClient
+}
+
+func (a *ReadOnlyApp) run() error {
+// implementation
+}
+
+func main() {
+  db := MyDBClient{user: "user", url: "url"}
+  a := ReadOnlyApp{db: db}
+  return a.run()
+}
+----
+
+I can also define new implementations of an interface that wrap others and combine them in new ways with no code changes other than the initialization in main.
+----
+type DBCache struct {
+  parent ReadDBClient
+}
+
+func (db *DBCache) Read(key string) (string, error) {
+  // check cache and return on hit
+  return db.parent.Read(key)
+}
+
+type DBLogger struct {
+  parent ReadDBClient
+}
+
+func (db *DBLogger) Read(key string) (string, error) {
+  // Log
+  return db.parent.Read(key)
+}
+
+// updated main
+func main() {
+  db := MyDBClient{user: "user", url: "url"}
+  // log db request
+  db = DBLogger{parent: db}
+  // add cache layer
+  db = DBCache{parent: db}
+  // log all Reads
+  db = DBLogger{parent: db}
+
+  a := ReadOnlyApp{db: db}
+  return a.run()
+}
+
+----
+
+== Mindset changes comming from Class based languages
+
+If you continue reading the FAQ through the OO language question onto inheritance you get to this statement regarding interfaces which I found to be quite true:
+
+    It takes some getting used to but this implicit style of type dependency is one of the most productive things about Go.
+
+Ideas I found helpful:
+
+* Interfaces don't need to be used everywhere and can be overdone.
+  ** Remember interfaces easy to add later with minimal code changes, even modifing existing code to use an interface is often simply changing a struct field definition and init step.
+     The result is that you can add interfaces after an initial implementation when you better understand the code and how it should be designed.
+  ** In traditional OO languages objects are used for both data and methods sometimes objects are mostly containers for data.
+     Interfaces only deal with methods.
+     When I started using go I would start with an interface like I used to start with an object but found it is better to start with a struct.
+* The go proverb `The bigger the interface, the weaker the abstraction.` reminds us that in general smaller interfaces retain flexibility.
+  Sometimes small interfaces are not practical but it is worth asking how a design could be modified if an interface is large.
+* Implementations of an interface can easily wrap another implementation enabling chaining together components without complicated code of inheritance relationships.
