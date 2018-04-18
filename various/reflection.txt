@@ -1,0 +1,95 @@
+= Golang Reflection
+:author: Tim Kuhlman
+:backend: slidy
+
+== What is it?
+
+To quote the https://blog.golang.org/laws-of-reflection[Go blog post] on it:
+
+		Reflection in computing is the ability of a program to examine its own structure, particularly through types; it's a form of metaprogramming. It's also a great source of confusion.
+
+Reflection is both pretty cool and something you want to only use occasionally.
+Two Go proverbs I think of regarding reflection:
+
+    Clear is better than clever.
+    Reflection is never clear.
+
+In summary using a language to examine itself is both at times useful and generally hard to think about.
+Go doesn't make it any easier because reflection in Go requires thinking about everything as an interface.
+
+== Reflect in Golang
+
+In Go interfaces are represented via a `(value, type)` pair.
+Lifting the example from the https://blog.golang.org/laws-of-reflection[Go blog post].
+
+    var r io.Reader
+    tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+    if err != nil {
+        return nil, err
+    }
+    r = tty
+
+* In the Go implementation representation `r` is `(tty, *os.File)` where `tty` is the value and `*os.File` is the type.
+  Only the Read method of `*os.File` is needed to satisfy the `io.Reader` interface but the representation stores the concrete type.
+* The type in an interface representation is not another interface it is a concrete type.
+* Reflection is Go starts with getting either the value or type of an interface, via `reflect.ValueOf` or `reflect.TypeOf`.
+* When doing reflection on types which are not interfaces the type is first stored in the empty interface then reflection is done.
+* From a value you can get the reflected type or even an interface with that value and type.
+* From the type you can not get the value nor the interface.
+* As you play with reflection methods there are lots of ways to cause panics.
+
+
+== Real Use Cases
+
+Reflection is Golang is proably most commonly used for handling of struct tags.
+For example you will find it all throughout the JSON package.
+Struct tags are in some ways nice but reflection also makes them in some ways annoying, demonstrating our dychotomy well.
+
+.A simpler real example of struct tags and reflection
+----
+type initConfig struct {
+	Environment   string `env:"ENVIRONMENT"`
+	Region        string `env:"REGION"`
+	ConsulURL     string `env:"CONSUL_URL"`
+	ConsulToken   string `env:"CONSUL_TOKEN"`
+	VaultURL      string `env:"VAULT_URL"`
+	VaultRoleID   string `env:"VAULT_ROLE_ID"`
+	VaultSecretID string `env:"VAULT_SECRET_ID"`
+}
+
+func initConfigFromEnv() (*initConfig, error) {
+	cfg := &initConfig{}
+	cfgValue := reflect.ValueOf(cfg)
+	for i := 0; i < cfgValue.Elem().NumField(); i++ {
+		varName := cfgValue.Elem().Type().Field(i).Tag.Get("env")
+		if varName == "" {
+			continue
+		}
+		envValue, ok := os.LookupEnv(varName)
+		if !ok {
+			return nil, fmt.Errorf("environment variable %q is required", varName)
+		}
+		cfgValue.Elem().Field(i).SetString(envValue)
+	}
+
+	return cfg, nil
+}
+----
+
+Questions:
+
+* What does this do?
+* Why `reflect.ValueOf` rather than `reflect.TypeOf`?
+* The type is known before `reflect.ValueOf` is used here, if it wasn't where could panics occur?
+
+=== Other Uses
+
+Recently I have used reflection in generating GraphQL schema from Golang structs.
+This is a good use case because the complexity of the reflection is offset by the work it saves. 
+It is extremely complex and error prone to manually put together hundreds of fields to build a GraphQL schema.
+With reflect I wrote one library which is well covered by automated tests and can be used for various data sets.
+
+From https://github.com/GannettDigital/content-api/tree/master/gql
+
+* Simple Example mapping types to GraphQL types - http://localhost:6060/src/github.com/GannettDigital/content-api/gql/builder.go?s=12244:12334#L271
+* More complicated use pulling the value from a struct based on the field name as mapped in the GraphQL schema - http://localhost:6060/src/github.com/GannettDigital/content-api/gql/utils.go?s=377:433#L1
