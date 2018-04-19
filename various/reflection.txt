@@ -43,7 +43,8 @@ Lifting the example from the https://blog.golang.org/laws-of-reflection[Go blog 
 
 Reflection is Golang is proably most commonly used for handling of struct tags.
 For example you will find it all throughout the JSON package.
-Struct tags are in some ways nice but reflection also makes them in some ways annoying, demonstrating our dychotomy well.
+The JSON package's reliance on reflection is why fields in a struct must be exported to work with JSON.
+Struct tags are in some ways nice but reflection also makes them in some ways annoying, demonstrating the dychotomy well.
 
 .A simpler real example of struct tags and reflection
 ----
