@@ -1,0 +1,319 @@
+= Golang Beginners Session
+:author: Tim Kuhlman
+:backend: slidy
+
+== Pre-Reqs
+
+The language basics are better covered by public resources than I can do.
+I expect anyone following this session to have completed these pre-reqs.
+
+- Worked through https://tour.golang.org/
+- At least one read through of https://golang.org/doc/effective_go.html
+- Your chosen environment setup, https://golang.org/doc/editors.html
+- Fluent in another language, this does not cover programming concept basics.
+
+== Why Golang
+I'm not trying to be exhaustive but briefly:
+
+* The language is relatively simple and designed for ease of development and maintenance especially as projects grow.
+  From the FAQ:
+  
+    Go is an attempt to combine the ease of programming of an interpreted, dynamically typed language with the efficiency and safety of a statically typed, compiled language
+
+* Compiled single binaries makes deployment easy and running fast.
+* Static typing and robust testing built in combine to make it easier to build reliable code.
+* Simple concurrency handling.
+* Standard library support is great, for example for HTTP.
+* Personally I find:
+  ** The simplicity of the language structure and tooling allow me to focus on the logic.
+  ** This in general makes it an enjoyable language to work with.
+
+== Project Layout
+A few general guidelines on Project layout:
+
+* Put your project root in the correct place in your GOPATH it makes everything easier.
+* Minimal main, it is hard to unit test code that is in main so the bulk of your code should be in a package.
+* Check out code you work on, use vendor directory for dependencies.
+* Packages
+  ** Don't make too many packages.
+  ** Don't make too few packages.
+  ** I find it helpful to step back and look at your Godocs and think how would I want this to be organized when using the package.
+* Only export when there is a clear reason to export, default to unexported. 
+  ** Fields in structs need to be exported for marshaling, ie JSON
+* Within a single file colocate a type declaration and the types methods.
+* Split imports into 3 groups, standard library, imports from code you own, imports from 3rd parties.
+* The general layout of a file is these sections in order:
+  ** Imports
+  ** Constants
+  ** Package variables
+  ** Types and their associated methods
+  ** Functions
+
+Example:
+
+* https://github.com/GannettDigital/content-api
+* http://localhost:6060/pkg/github.com/GannettDigital/content-api/
+
+== Error Handling
+The most glaring thing for me when I started using Go was the error handling.
+It is undeniably verbose.
+
+The flip side to this is it forces you to think about proper error handling in your app and so you write more robust code.
+
+* #1 Rule - Don't ignore errors even though it is tempting to do so.
+  Make it a habit to always handle them.
+* Errors are commonly the last return parameter for functions returning multiple params.
+* Errors are easy to build on each other and bubble up from libraries to code that logs or correctly handles them.
+  A common pattern is
+
+    foo, err := doSomething()
+    if err != nil {
+        return fmt.Errorf("something failed to do: %v", err)
+    }
+
+* To keep errors that build on each other easy to read they should be start with a lowercase letter and contain only appropriate punctuation.
+* Though pushing the error up the line is often most apporpriate don't blindly do it, handle the error if possible at that layer.
+* Since they are everywhere it is often nice to collapse calls that return only an error into the if, ie the same example as above without foo:
+
+    if _, err := doSomething(); err != nil {
+        return fmt.Errorf("something failed to do: %v", err)
+    }
+
+* Errors are nothing special, just an interface:
+
+    type error interface {
+        Error() string
+    }
+
+* This means they can easily be extended:
+
+    type customErr struct {
+        msg string
+        code int
+    }
+    func (c customErr) Error() string {
+        return fmt.Sprintf("%s - error code %d", c.msg, c.code)
+    }
+
+== Interfaces
+Interfaces is one of the things I found hardest to use effectively in Go when first starting.
+
+Recap of Interfaces, they:
+
+* Define a set of methods.
+* Are a single type declaration and are very lightweight.
+* Are implemented by types that have the right methods.
+* Any type with the right methods implements the interface there is no need to declare anything it is implicit.
+* A type can implement many interfaces.
+* The implicit implementation simplifies code evolution.
+  ** New interfaces and new implementations of interfaces can be added without touching existing code.
+
+Tips for using interfaces:
+
+* Interfaces don't need to be used everywhere and can be overdone.
+  ** Remember interfaces are easy to add later with minimal code changes.
+  ** Add interfaces after an initial implementation when you better understand the code and how it should be designed.
+  ** In traditional OO languages objects are used for both data and methods sometimes objects are mostly containers for data.
+     Interfaces only deal with methods.
+  ** When I started using go I would start with an interface but found it is workes better for me to start with a struct.
+* The go proverb `The bigger the interface, the weaker the abstraction.` reminds us that in general smaller interfaces retain flexibility.
+  ** Sometimes small interfaces are not practical but it is worth asking how a design could be modified if an interface is large.
+
+Note: One of the recorded Golang SIG talks is about Object Oriented programming with interfaces.
+
+=== Quick Example:
+
+The code from last slide implements the error interface.
+
+    type customErr struct {
+        msg string
+        code int
+    }
+    func (c customErr) Error() string {
+        return fmt.Sprintf("%s - error code %d", c.msg, c.code)
+    }
+
+Add one more method:
+
+    func (c customErr) StatusCode() int { return c.code }
+
+Now this implements https://github.com/GannettDigital/content-api/blob/master/gql/example_test.go[StatusCoder] from go-kit a microservices framework.
+Any type implementing this now interface for returning custom http status codes with go-kit.
+
+
+== Standard Library
+
+The standard library is excellent quality and covers many use cases - https://golang.org/pkg/
+
+Highlights:
+
+* *bytes* - I commonly use the buffering in this package.
+* *context* - Used for request specific context by http and similar packages.
+* *encoding/json* - JSON marshal/unmarshalling ie converting to/from Golang structs and JSON
+* *errors* - most just for `errors.New`
+* *fmt* - It is always surprising to me how often string formatting is needed.
+* *io/ioutil* - `ioutil.ReadAll` and `ioutil.ReadFile` are commonly used
+* *net/http* - Client and server http implementations
+* *os/signal* - Handling shutdown signalsk
+* *path* and *path/filepath* - smart path parsing
+* *regexp* - regular expressions
+* *sync* - covered in more depth below
+* Others to keep in mind
+  ** *compress*
+  ** *crypto*
+  ** *encoding*
+  ** *html/template*, *text/template*
+
+=== Standard Interfaces
+
+The standard library includes many interfaces that are really helpful to use on a regular basis.
+The top ones to know are:
+
+* *io.Reader*, *io.Writer* and variants - https://golang.org/pkg/io/
+* *fmt.Stringer* - https://golang.org/pkg/fmt/#Stringer
+* *json.Marshaler*/*json.Unmarshaler* - https://golang.org/pkg/encoding/json/
+* *sort.Interface* - https://golang.org/pkg/sort/#Interface
+
+== Golang Tooling
+
+One of the things I found surprisingly refreshing when getting started with Golang is the built in tooling around the core language.
+
+* gofmt
+  ** Stops the debate about styling. Run gofmt, don't care much about anything else, end of story.
+* go imports
+  ** gofmt plus intelligently removes/adds imports.
+* go vet
+  ** Checks code for common errors unlike similar tools it is isn't noisy and is basically always right.
+* Others with dedicated sections
+  ** go test
+  ** godoc
+* Other Advanced Tools out of scope for this session
+  ** pprof - profiling tools.
+  ** go generate - use for generating Go code.
+
+== Dependency Management
+
+History and Future:
+
+* In the beginning Google forgot the rest of the world is not Google and we don't have a single huge repository for all code.
+  ** Everyone makes mistakes :)
+* Then came various tools for dependency management.
+* Then came vendor directories.
+* Then came various modifications of tools to support vendor directions.
+* Then came dep the one dependency tool to rule them all.
+* Next (and final?) iteration - https://blog.golang.org/versioning-proposal[vgo]
+
+=== dep
+
+Dep is the standard tool for dependency management today.
+
+* Install it `brew install dep` or some other way.
+* Run it on a new repo `dep init`
+* Run it on an existing repo `dep ensure`
+* Your dependencies show up in the `vendor` directory.
+* Pin any specific versions in `Gopkg.toml`
+* Check in `Gopkg.toml` and `Gopkg.lock` which record the dependencies and optionally the entire `vendor` directory.
+* Dep documentation - https://golang.github.io/dep/docs/introduction.html
+
+== Godoc
+
+godoc is the documentation tool for Go and it is great.
+
+* Standard library packages are godoc format - https://golang.org/pkg/
+* Any publicly available code has its docs up at https://godoc.org/ based on its import path.
+  ** For example - https://godoc.org/cloud.google.com/go/pubsub
+* You can run godoc locally to serve up docs for any code in your GOPATH
+  ** The standard library docs, effective go and a few other pages are also available locally.
+  ** I have an alias which nicely make a clickable link http://localhost:6060/pkg/
+    *** `alias godoc='echo Go doc available at "http://localhost:6060/pkg/" add ?m=all to include unexported docs; godoc -http :6060'`
+  ** I sometimes view unexported docs to help me think about code structure.
+* Clicking on the function name takes you to code as well as docs.
+
+=== Writing Godocs
+
+Using this code as an example - http://localhost:6060/pkg/github.com/GannettDigital/content-api/gql/
+
+* Package comments - http://localhost:6060/src/github.com/GannettDigital/content-api/gql/builder.go
+  ** All packages should have a package comment in one file.
+  ** Convention is to start with "Package"
+* Function comments - http://localhost:6060/src/github.com/GannettDigital/content-api/gql/utils.go?s=377:433#L1
+  ** All exported functions should have a godoc.
+* Comments in structs or const/var declarations show up
+  ** http://localhost:6060/pkg/github.com/GannettDigital/content-api/content/loader/#Config
+  ** http://localhost:6060/pkg/github.com/GannettDigital/content-api/gql/#pkg-constants
+
+== Testing in Go
+
+The tooling around testing is Go is excellent.
+
+* Any file matching the pattern `*_test.go` is treated as test code.
+* Convention is to put code in a file, like `db.go` and tests for that code next to it in `db_test.go`.
+* Tests themselves start with the name `Test` and take as the single argument `*testing.T`, for example `func TestConvert(t *testing.t) {`
+* Test results are reported using methods on `t` which is the standard name for `*testing.T`
+* Just run `go test ./mypackage` to run tests.
+  ** `go test ./...` to test all packages based on the current working dir.
+
+=== Table driven testing
+
+A common idiomatic pattern for tests is table driven testing.
+
+* Example from my code - https://github.com/GannettDigital/jstransform/blob/master/transform/utils_test.go#L71
+* Common in the standard library - https://golang.org/src/fmt/fmt_test.go#L147
+
+=== Additional Awesome test tooling
+
+* Race detection
+  ** `go test -race` will report on any data races encountered while running.
+  ** You should default to running most tests with the race flag.
+* Coverage reports
+  ** `go test -cover ./jsonschema` will report coverage numbers
+  ** `go test -coverprofile=cover.out ./jsonschema` followed by `go tool cover -html=cover.out` runs a web server with results
+* Benchmarks
+  ** http://localhost:6060/src/github.com/GannettDigital/content-api/db/db_test.go#L292
+  ** Output looks like
+
+    BenchmarkWriteAssetWithValidator-8   	   10000	    188925 ns/op
+    BenchmarkWriteAssetNoValidator-8     	  100000	     17504 ns/op
+
+* Godoc examples
+  ** They show up in godocs as example but are compiled as tests so the example code doesn't end up falling out of date
+  ** http://localhost:6060/pkg/github.com/GannettDigital/content-api/gql/#ObjectBuilder
+  ** http://localhost:6060/src/github.com/GannettDigital/content-api/gql/example_test.go
+
+== Concurrency
+
+Though often talked about concurrency isn't used in every program.
+The pre-reqs covered the basics here are a few more points.
+
+* The effective go section on concurrency is good to review, https://golang.org/doc/effective_go.html#concurrency
+* The slogan, "Do not communicate by sharing memory; instead, share memory by communicating." is a helpful way of thinking about effective concurrency with channels.
+* The `sync` package includes some great tools
+  ** *Mutex* and *RWMutex* - There is a place for mutexes as well, go is pragmatic use the best tool for the job.
+  ** *WaitGroups* - Useful managing a set of worker go routines.
+* Channel Axioms - https://dave.cheney.net/2014/03/19/channel-axioms
+  ** Addresses behavior of nil and closed channels.
+* There are a couple of SIG talks with recordings that further address concurrency.
+
+== Links
+
+* Gannett Golang SIG - https://confluence.gannett.com/display/PAAS/Golang+SIG
+* Effective go - https://golang.org/doc/effective_go.html
+* Go by Example - https://gobyexample.com/
+* Go code review comments helps understand Go idiomatic style - https://github.com/golang/go/wiki/CodeReviewComments
+* play.golang.org for quick concept checks and sharing code snippets - https://play.golang.org/
+* Go Blog has some great articles on key Golang concepts - https://blog.golang.org/
+* Go proverbs - https://go-proverbs.github.io/
+
+== Development Task
+
+Build a web server that give a list of strings will return it sorted.
+
+* Show it is working by unit tests which run the app and input different lists of strings checking the output of each.
+* Optionally you can also demo running it locally with curl or something similar.
+* Beyond the basics:
+  ** Offer the output in csv, json or any other output format depending on the client request.
+  ** Return the list in reverse order as well with the creation of both forward and reverse lists done concurrently.
+     Make sure to run tests with the `-race` flag.
+  ** Add metrics for your service.
+  ** Add a request log for your service.
+
