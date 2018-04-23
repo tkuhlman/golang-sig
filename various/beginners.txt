@@ -154,7 +154,7 @@ Highlights:
 * *fmt* - It is always surprising to me how often string formatting is needed.
 * *io/ioutil* - `ioutil.ReadAll` and `ioutil.ReadFile` are commonly used
 * *net/http* - Client and server http implementations
-* *os/signal* - Handling shutdown signalsk
+* *os/signal* - Handling shutdown signals
 * *path* and *path/filepath* - smart path parsing
 * *regexp* - regular expressions
 * *sync* - covered in more depth below
@@ -317,3 +317,6 @@ Build a web server that give a list of strings will return it sorted.
   ** Add metrics for your service.
   ** Add a request log for your service.
 
+== Feedback
+
+* Please take a survey for feedback - https://goo.gl/forms/O9JI5vTafT6MMNSn1
