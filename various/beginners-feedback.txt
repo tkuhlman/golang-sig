@@ -1,0 +1,14 @@
+I asked for feedback after the session here are some details:
+* Survey link https://docs.google.com/forms/d/1mRBknttiEBx1BBK7qTIDq2FcStu9cI8QsA_Aa-gxC5g/edit#responses
+* It was at 8 responses when I last looked and the conclusions:
+  ** Many people thought there was too much pre work, others just that they should have been given more time.
+  ** 2 people didn't think the presented material was very relevant, another couple had it in the middle.
+  ** Some people loved it all.
+  ** My helpers did a good job.
+  ** Suggestions:
+    *** More prep time
+    *** Clearly let the group know who the Go experts they are working with are.
+    *** code review should not be optional.
+* My thoughts
+  ** An hour of talking is too much, I should consider similar content for the material but breaking it up into a series of smaller exercises.
+  ** Consider weeding out those only 1/2 interested, ie making pre-reqs clear, making code review not optional and letting people know that up front.
