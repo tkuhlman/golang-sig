@@ -1,0 +1,68 @@
+= Test Doubles for Testing in Golang
+:author: Tim Kuhlman
+:backend: slidy
+
+== Test Doubles
+
+A test double is a term that encompasses, stubs, mocks, fakes, dummies and other ways of faking part of a system in testing.
+
+Rather than talk just about mocks as the requested title suggested I want to talk about how to effectively unit test which is why any of the test doubles exist.
+
+Here is a table copied from https://martinfowler.com/bliki/TestDouble.html
+
+* *Dummy* objects are passed around but never actually used. Usually they are just used to fill parameter lists.
+* *Fake* objects actually have working implementations, but usually take some shortcut which makes them not suitable for production (an InMemoryTestDatabase is a good example).
+* *Stubs* provide canned answers to calls made during the test, usually not responding at all to anything outside what's programmed in for the test.
+* *Spies* are stubs that also record some information based on how they were called. One form of this might be an email service that records how many messages it was sent.
+* *Mocks* are pre-programmed with expectations which form a specification of the calls they are expected to receive. They can throw an exception if they receive a call they don't expect and are checked during verification to ensure they got all the calls they were expecting.
+
+== Test Doubles in Golang
+
+*Dummy* - These are trivial in golang as in basically any language.
+
+All the other types are enabled primarily through the use of interfaces and setting different dependencies on initialization.
+
+=== Creating your own Test Double
+
+* Starts with defining a test type.
+* Then generating the methods needed to match the interface.
+  I recommend setting up code generation for this in your IDE, all the major go IDEs either have it natively or a plugin for github.com/josharian/impl.
+* From then on whether it is a fake, stub, spy or mock just depends on how you implement the methods.
+
+=== State vs Behavior Driven Testing
+
+Tests can generally be written to verify the state after the test runs or to verify the behavior of the code.
+Most of the mock libraries aid in behavior verification.
+As usual implement what is best for the task at hand.
+
+=== Mock Libraries
+
+Here is where my knowledge breaks down, I don't routinely use mocking libraries and most often do state verification in my tests.
+This is mostly because of habit and though partly because of the complication these libraries adds for those not familiar with them.
+
+Thoughts from everyone else?
+
+A few of the top ones:
+
+* https://github.com/golang/mock
+* https://github.com/maxbrunsfeld/counterfeiter
+* https://github.com/petergtz/pegomock
+* https://github.com/stretchr/testify
+
+
+== Designing for Testability
+
+Regardless of how testing is approached it is an important when writing code to make it easy to test.
+This is often a clear differentiator of quality code.
+
+A few things to think about:
+
+* If you know users of a your interface will need to write their own unit tests provide a test double.
+  This saves a lot of work during unit testing.
+  ** Some examples using interfaces, http://localhost:6060/pkg/github.com/GannettDigital/content-api/db/ and http://localhost:6060/pkg/github.com/GannettDigital/content-api/policy/
+  ** The better libraries do this as well, https://godoc.org/cloud.google.com/go/pubsub/pstest and https://godoc.org/github.com/hashicorp/vault/vault#NewTestCluster
+* Better than a Fake if possible make it so your entire implementation can run for a unit test.
+  ** A great example is https://golang.org/pkg/net/http/httptest/#Server which just runs the full server on the local machine for end to end tests on top of it the implementors gave you these helper functions.
+* Write your code so implementors need only replace only a small functionality and are therefore testing most of the real code.
+  ** For example allow setting an http.Client or net.Dial so that users can replace it with a test double but still run tests through the rest of your code.
+  This goes along with trying to write smaller cleaner interfaces.
