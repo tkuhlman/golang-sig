@@ -1,0 +1,73 @@
+= Golang Benchmarks
+:author: Tim Kuhlman
+:backend: slidy
+
+== Benchmark Tests
+
+* Benchmarking is built into the standard Go testing tools.
+* They are similar to regular tests so are easy to write if you are familiar with tests.
+* They are so easy we should use them more often.
+* Documentation is in the standard go testing docs, https://golang.org/pkg/testing/#hdr-Benchmarks
+
+== Writing a Benchmark
+To use it, first write a function matching this pattern in a test file:
+
+    func BenchmarkFoo(b *testing.B) {
+        for i := 0; i < b.N; i++ {
+            foo()
+        }
+    }
+
+The name must match `Benchmark*`, the argument be `*testing.B` similar to a standard test but slightly different.
+The for loop contains the code to benchmark, Go will automatically adjust the number of loops as needed to get accurate timing.
+
+To run just add the flag `-bench=.` to your go test command.
+Often you want to skip other tests so add a run regex that matches nothing to skip those.
+
+`go test -run=foo -bench=. ./content/`
+
+== Examples
+
+Written to compare the performance cost of a new feature.
+
+* https://github.com/GannettDigital/content-api/blob/master/content/graphql_test.go#L471
+* Things to note, `b.ResetTimer()`, `b.Fatal` rather than `t.Fatal`
+* Second test is similar just turning off the feature.
+* Running results in output like:
+
+    BenchmarkGraphQLQueryNoAssetReporting-8     5000  330476 ns/op
+    BenchmarkGraphQLQueryWithAssetReporting-8   3000  527774 ns/op
+
+* Another example similar but written before a code change and the results compared before/after to verify a large improvement.
+  ** https://github.com/GannettDigital/content-api/blob/master/content/graphql_test.go#L564
+
+== Parallel Benchmarks
+
+Often you want to test how a piece of code performs in parallel this is built in also.
+To run use the `RunParallel` helper function and pass it a function taking `*testing.PB` as an argument.
+Within the function use `pb.Next()` to move to the next iteration in a for loop.
+The loop is then run b.N times across all goroutines.
+
+To run add the `-cpu` flag with comma separated list of the number of parallel instances.
+
+=== Parallel Example
+
+This test was used to compare some different approaches to locking.
+https://github.com/GannettDigital/content-api/blob/master/policy/manager_test.go#L561
+
+Running with `go test -run foo -bench . -cpu 4,8,12 ./policy` results in:
+
+    BenchmarkPolicyManager-4  	20000000    65.1 ns/op
+    BenchmarkPolicyManager-8  	30000000    47.7 ns/op
+    BenchmarkPolicyManager-12 	30000000    45.6 ns/op
+
+== Other Benchmark Notes
+
+* Memmory allocation information can be added to the output with the `-benchmem` flag.
+
+    BenchmarkGraphQLQueryNoAssetReporting-8    5000   327871 ns/op   152659 B/op  2371 allocs/op
+    BenchmarkGraphQLQueryWithAssetReporting-8  3000   524855 ns/op   195569 B/op  2961 allocs/op
+
+* Modify the amount of time a benchmark must run with the flag `-benchtime`, defaults to 1 second.
+* Set benchmark tests to run more than once with `-count`.
+* Don't forget profiling is built into the test tool also. There is a recorded talk from Dennis regarding that.
