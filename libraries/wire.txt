@@ -1,0 +1,30 @@
+= Go Cloud Wire - Dependency Injection
+:author: Tim Kuhlman
+:backend: slidy
+
+== Overview
+
+Wire is a dependency injection tool written for Go cloud but usable by other projects.
+
+Main features:
+
+* Introduced in this blog post, https://blog.golang.org/wire
+* Dependency Injection via code generation rather than reflection or service locators.
+** This means it is regular code you can follow and use tooling with rather some dependency "magic" parts.
+* This can simplify the developer process and save time though is only really worth it for projects with many dependencies.
+* A more in depth readme at https://github.com/google/go-cloud/blob/master/wire/README.md
+
+== Basic Usage
+
+Wire defines providers and injectors.
+
+=== Providers
+These are initialization functions that return a new object taking various dependencies as arguments.
+Common groupings of various providers can be built up into `ProviderSet`.
+
+=== Injectors
+These are generated functions that build up the set of providers in the correct order.
+The part you write is just the function signature and a call to `wire.Build` that lists the Providers and/or ProviderSets.
+The rest of the function is generated for you and the generation can identify missing dependencies.
+
+== A Real Example
