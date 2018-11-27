@@ -1,0 +1,175 @@
+= Functional Programming in Go
+:author: Tim Kuhlman
+:backend: slidy
+
+== Functional Programming Defined
+
+A style of programming built around functions whose results depend only on the arguments passed to the function, ie are stateless.
+
+It is in contrast to the more common object oriented programming where methods on an object are highly dependent on the state.
+
+Why Explore Functional Programming?
+
+* This style can sometimes result in cleaner, easier to understand, test and maintain code.
+* The building blocks for functional code are often more reusable than imperative style.
+* Pure Functions have no shared data concurrency is easy, every function can be run concurrently.
+** This fits well with "Don't communicate by sharing memory, share memory by communicating."
+
+=== Imperative vs Declarative
+
+I find the advantages to functional progamming easiest to see when you think of tranditional programming as imperative programming and functional as declarative, roughly:
+
+- Imperative Progamming - A set of steps on what to do.
+- Declarative Programming - A way of writing what you want the result to be.
+
+Briefly
+.Imperative filter out numbers
+----
+alist := []string{"a", "2", "c", "4"}
+var numbers []int
+for _, item := range alist {
+  if i, err := strconv.Atoi(item); err == nil {
+    numbers = append(numbers, i)
+  }
+}
+----
+
+Versus a declarative style
+.Declarative filter out numbers
+----
+alist := []string{"a", "2", "c", "4"}
+numbers := filterStrings(alist, isNumber)
+
+// of course the following functions need to exist but can be reused for other apps and are defined independent of the logic above
+
+func filterStrings(alist []string, fn func(string) bool) []string {
+  var results []string
+  for _, item := range list {
+    if fn(item) {
+      results = append(results, i)
+    }
+  }
+  return results
+}
+
+func isNumber(item string) bool {
+    if _, err := strconv.Atoi(item); err == nil {
+      return true
+    }
+    return false
+}
+----
+
+== Functional Programming Concepts in Go
+
+Go has some aspects that allow it to be used in a functional style but isn't explicitly designed for functional programming and lacks features that would make it true functional programming language.
+As a result programs in Go with functional concepts are generally a mix of functional and non-functional style code.
+
+*In Go*
+
+* High order functions - ie functions that can take another function as argument or return a function as an argument.
+* Pure functions - functions with no side effects, this means a function always has the same output for the same input. Not all functions will be pure but some can and making a clear distinction between the two is helpful.
+* Recursion
+* Closures
+* Anonymous functions
+
+*Not in Go*
+
+* map, reduce, filter are common in functional programming and do not natively exist in Go, rather they must be implemented by the programmer as needed.
+** The lack of generics makes implementing this more cumbersome as it must be done for each type.
+* Tail Call Optimization - This would allow the final call in a subroutine run as a function to avoid a new stack frame.
+  In short without this pure functional style programs are less efficient in Go because of functional programmings heavier use of function calls.
+
+== Functional Programming with Go
+As I learned a bit about functional programming I begun to realize many aspects are already in use in our go code, for example:
+
+* High order functions in https://godoc.org/github.com/go-kit/kit/endpoint#Middleware[Go-Kit middleware]
+* Closures and anonymous functions are used regularly.
+* Though not called out as being pure most functions (not methods) are.
+
+Thinking about how to use these in a declarative style is perhaps where the cleaner design emerges:
+
+* Content-Ingestor-API performs nearly the same steps for a bunch of types where each is type implements the steps with a lot of specific state for each step.
+  https://github.com/GannettDigital/content-ingestor-api/blob/master/pipeline/banner.go#L124[For Example the banner ingestion].
+* Could I make it easier to follow and reduce duplication by converting to a more declarative/functional style? Playing with it I ended up with this mess
+  of high order functions:
+
+.Funnctional Style Content Ingestor API
+----
+
+type ingestFunc func(context.Context, json.RawMessage) (*IngestorResponse, error)
+type rawStep func(context.Context, json.RawMessage) (interface{}, error)
+type typeStep func(context.Context, interface{}) error
+
+type BannerIngestor struct {
+	ingestFunc ingestFunc
+  // etc
+}
+
+func NewBannerIngestor(cfg IngestorConfig, logger log.Logger) (Ingestor, error) {
+  // same initialization
+  ingestor := &BannerIngestor{
+    // . . .
+  }
+  ingestor.ingestFunc := NewIngestFunc(
+  []rawStep{
+    newValidateStep(ingestor.Validator),
+    loggingRawStep(ingestor.Logger, newTransformStep(ingestor.Transformer)),
+  },
+  []typeStep{
+    newDBWrite(ingestor.DB),
+    newSearchIndex(ingestor.Search),
+    // no subscription needed
+    newFastlyPurge(ingestor.Fastly),
+  },
+  )
+}
+
+func (bi *BannerIngestor) Ingest(ctx context.Context, raw json.RawMessage) (*IngestorResponse, error) {
+  return bi.ingestFunc(ctx, raw)
+}
+
+// Some of the functions shared between all types
+
+func loggingRawStep(logger log.Logger, previous rawStep) rawStep {
+  return func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
+    iface, err := previous(ctx, raw)
+    if err != nil {
+      logger.Log(err)
+    }
+    return iface, err
+  }
+}
+
+func NewIngestFunc(rawSteps []rawStep, typeSteps []typeStep) ingestFunc {
+  return func (bi *BannerIngestor) Ingest(ctx context.Context, raw json.RawMessage) (*IngestorResponse, error) {
+    txn := TXNFromContext(ctx)
+
+    var transformed interface{}
+    var err error
+    for _, rawFunc := range rawSteps {
+      transformed, err := rawFunc(ctx, raw)
+      if err != nil {
+        msg := addErrorKey(fmt.Sprintf("invalid input: %v", err), raw, "id")
+        return NewIngestorResponse(http.StatusBadRequest, msg), nil
+      }
+    }
+
+    for _, typeFunc := range typeSteps {
+    if err := typeFunc(ctx, transformed); err != nil {
+      return nil, err
+    }
+    }
+    return NewIngestorResponse(http.StatusOK, ""), nil
+  }
+}
+----
+
+== Conclusions
+As I investigated functional programming in Golang my main take aways are:
+
+- Approaching programming with a declaritive mindset rather than imperative can result in cleaner code.
+- Where possible build pure functions, they are more versatile, easier to understand at glance and easier to test.
+- Include the high order functions in your toolbox.
+
+Thoughts? Suggestions?
